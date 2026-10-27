@@ -206,18 +206,23 @@ function Update-Script {
     }
 }
 
-# --- Fix task setting: ensure runs whether user logged in or not ---
+# --- Fix task setting: change principal from InteractiveToken to ServiceAccount (SYSTEM) ---
 function Fix-TaskSetting {
     try {
         $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-        if ($task -and $task.Principal.RunLevel -eq "Highest") {
-            # Get current settings
-            $taskInfo = Get-ScheduledTaskInfo -TaskName $TaskName
+        if ($task) {
+            # Check if LogonType is InteractiveToken (run only when user logged on)
+            $xml = [xml]($task | Export-ScheduledTask)
+            $logonType = $xml.Task.Principals.Principal.LogonType
             
-            # If currently set to "run only when user is logged on", fix it
-            if ($task.Settings.RunOnlyIfLoggedOn) {
-                $settings = New-ScheduledTaskSettingsSet -RunOnlyIfLoggedOn $false -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-                Set-ScheduledTask -TaskName $TaskName -Settings $settings | Out-Null
+            # If InteractiveToken, change to ServiceAccount (SYSTEM) so task runs without user logged on
+            if ($logonType -eq "InteractiveToken") {
+                try {
+                    $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+                    Set-ScheduledTask -TaskName $TaskName -Principal $Principal | Out-Null
+                } catch {
+                    # fail silently, will retry next cycle
+                }
             }
         }
     } catch {
