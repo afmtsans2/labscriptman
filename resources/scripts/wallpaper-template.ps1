@@ -182,10 +182,10 @@ function Sync-Wallpaper {
         # Broadcast desktop refresh to active session
         Start-Process -FilePath "RUNDLL32.EXE" -ArgumentList "user32.dll,UpdatePerUserSystemParameters ,1 ,True" -NoNewWindow -Wait -ErrorAction SilentlyContinue
         
-        # Force explorer refresh: kill explorer and restart (clears wallpaper cache)
+        # Force explorer refresh: kill explorer across all sessions and restart (clears wallpaper cache)
         Start-Sleep -Milliseconds 500
-        Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Milliseconds 1000
+        cmd /c "taskkill /F /IM explorer.exe /T" | Out-Null -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 1500
         Start-Process -FilePath "explorer.exe" -ErrorAction SilentlyContinue
 
         Write-Host "Wallpaper applied to $($LoadedSIDs.Count + $ProfileList.Count) user(s): $WallpaperBmp"
