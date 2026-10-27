@@ -121,6 +121,12 @@ function Sync-Wallpaper {
         $WallpaperBmp = "$DataDir\wallpaper.bmp"
         Copy-Item -Path $WallpaperFile -Destination $WallpaperBmp -Force
 
+        # Set permission: Everyone can read (fixes non-admin user access)
+        $Acl = Get-Acl $WallpaperBmp
+        $Rule = New-Object System.Security.AccessControl.FileSystemAccessRule("Everyone", "Read", "Allow")
+        $Acl.SetAccessRule($Rule)
+        Set-Acl -Path $WallpaperBmp -AclObject $Acl
+
         # Helper: write wallpaper keys to a registry path
         function Set-WallpaperReg($RegPath) {
             if (Test-Path $RegPath) {
@@ -200,10 +206,30 @@ function Update-Script {
     }
 }
 
-# --- If RunOnly: self-update, check interval, sync, checkin, exit ---
+# --- Fix task setting: ensure runs whether user logged in or not ---
+function Fix-TaskSetting {
+    try {
+        $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        if ($task -and $task.Principal.RunLevel -eq "Highest") {
+            # Get current settings
+            $taskInfo = Get-ScheduledTaskInfo -TaskName $TaskName
+            
+            # If currently set to "run only when user is logged on", fix it
+            if ($task.Settings.RunOnlyIfLoggedOn) {
+                $settings = New-ScheduledTaskSettingsSet -RunOnlyIfLoggedOn $false -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+                Set-ScheduledTask -TaskName $TaskName -Settings $settings | Out-Null
+            }
+        }
+    } catch {
+        # fail silently, will retry next cycle
+    }
+}
+
+# --- If RunOnly: self-update, check interval, fix settings, sync, checkin, exit ---
 if ($RunOnly) {
     Update-Script
     Update-IntervalFromServer
+    Fix-TaskSetting
     Sync-Wallpaper
     Send-Checkin
     exit 0
